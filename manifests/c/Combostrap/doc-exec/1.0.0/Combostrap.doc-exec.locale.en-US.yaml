@@ -1,0 +1,27 @@
+# Generated with JReleaser 1.17.0 at 2025-10-23T14:12:47.407080891Z
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.4.0.schema.json
+
+PackageIdentifier: Combostrap.doc-exec
+PackageVersion: 1.0.0
+PackageLocale: en-US
+Publisher: Combostrap
+PublisherUrl: https://github.com/ComboStrap/doc-exec
+PublisherSupportUrl: https://github.com/ComboStrap/doc-exec/issues
+Author: Combostrap Team
+PackageName: doc-exec
+PackageUrl: https://github.com/ComboStrap/doc-exec
+License: Functional Source License, Version 1.1, MIT Future License
+LicenseUrl: https://spdx.org/licenses/FSL-1.1-MIT.html
+Copyright: 2025 Combostrap.com
+ShortDescription: ComboStrap Doc Exec
+Description: |
+  Doc Exec, execution of code inside documentation
+Moniker: doc-exec
+Tags:
+  - documentation
+  - execution
+  - markdown
+  - wiki
+ReleaseNotesUrl: https://github.com/combostrap/doc-exec/releases/tag/v1.0.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
