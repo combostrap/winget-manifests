@@ -1,4 +1,4 @@
-# Generated with JReleaser 1.21.0 at 2025-11-04T08:28:05.377570177Z
+# Generated with JReleaser 1.21.0 at 2025-11-04T09:34:35.585377328Z
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
 
 PackageIdentifier: combostrap.doc-exec
@@ -16,7 +16,7 @@ ReleaseDate: 2025-11-04
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/combostrap/doc-exec/releases/download/v1.0.0/combostrap-doc-exec-1.0.0-jre-windows-x86_64.msi
-    InstallerSha256: b6cf3ca629712838e2d564d5283fa08072d26a5ef2f164d23d609335caf0766b
+    InstallerSha256: 599fb5ada5529e468c80b576cf6286772ced18cf050d83ddea27bd362343829e
     ProductCode: 'doc-exec 1.0.0'
 ManifestType: installer
 ManifestVersion: 1.9.0
