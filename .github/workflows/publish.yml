@@ -1,0 +1,178 @@
+# Update our fork of winget-pkgs with the manifests stored in this repo
+# ie https://learn.microsoft.com/en-us/windows/package-manager/package/repository
+name: Publish to winget-pkgs
+
+on:
+  # Trigger manually
+  workflow_dispatch:
+  # Trigger on push
+  push:
+    tags:
+      - '*-v*'
+
+env:
+  # The path prefix where this repository is checked out
+  CHECKOUT_PATH_THIS: main
+  # The path prefix where the winget-pkgs repository is checked out
+  CHECKOUT_PATH_WINGET_PKGS: winget-pkgs
+
+jobs:
+  publish:
+    name: Publish to winget-pkgs
+    runs-on: windows-latest
+    timeout-minutes: 15 # install may get stuck
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          path: ${{ env.CHECKOUT_PATH_THIS }}
+
+      - name: Props (Product, version and paths)
+        id: props
+        shell: pwsh
+        run: |
+          $RefName='${{ github.ref_name }}'
+          if ($RefName -match '^(.+)-v(.+)$'){
+          
+            # Matched group
+            $productName = $matches[1]
+            $productVersion = $matches[2]
+          
+            # Set Product Name 
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "product_name=$productName"
+          
+            # Set Product Version 
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "product_version=$productVersion"
+          
+            $publisherName='${{ github.repository_owner }}'
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "publisher_name=$publisherName"
+          
+            # Set Manifest Path (Path is: manifests / letter / publisher / application / version)
+            $letter=$publisherName[0]
+            $manifestPath="\manifests\$letter\$publisherName\$productName\$productVersion"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "manifest_path=$manifestPath"
+          
+            # Set package name
+            # We can't use packageId because we install it locally, 
+            # Because the package id is the id of the source, we get instead a ARP identifier 
+            $packageName="$productName"
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "package_name=$packageName"
+          
+            # Log
+            Write-Host "Product Name: $productName"
+            Write-Host "Product Version: $productVersion"
+            Write-Host "Manifest Path: $manifestPath"
+            Write-Host "Package Name: $packageName"
+          
+          } else {
+            Write-Error "Ref Name '$RefName' does not match expected pattern '*-v*'"
+            exit 1
+          }
+
+      # Step 1: Validate your manifest
+      # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-1-validate-your-manifest
+      - name: Manifest validation
+        shell: pwsh
+        run: |
+          winget validate ${{ env.CHECKOUT_PATH_THIS }}\${{ steps.props.outputs.manifest_path }}
+
+      # Step 2 adapted of https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-2-test-your-manifest-with-windows-sandbox
+      - name: Test Installation
+        shell: pwsh
+        run: |
+          
+          # Does not work: Error: Windows Sandbox does not seem to be available
+          # It will not work because there is no sandbox available
+          # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-2-test-your-manifest-with-windows-sandbox
+          # We get this error: `Error: Windows Sandbox does not seem to be available`
+          # ${{ env.CHECKOUT_PATH_WINGET_PKGS }}\Tools\SandboxTest.ps1 ..\${{ env.CHECKOUT_PATH_THIS }}\${{ steps.props.outputs.manifest_path }}
+          
+          # Enable Local Install
+          winget settings --enable LocalManifestFiles
+          winget settings --enable LocalArchiveMalwareScanOverride
+          
+          # Local Install
+          winget install --manifest ${{ env.CHECKOUT_PATH_THIS }}\${{ steps.props.outputs.manifest_path }} --silent --accept-package-agreements --accept-source-agreements
+          if ($LASTEXITCODE -ne 0) { throw "winget install failed with exit code $LASTEXITCODE" }
+          
+          # Verify installation
+          # Funy enough, the list command will ask "Do you agree to all the source agreements terms?"
+          winget list --name ${{ steps.props.outputs.package_name }} --accept-source-agreements
+          if ($LASTEXITCODE -ne 0) { throw "winget list --name ${{ steps.props.outputs.package_name }} failed with exit code $LASTEXITCODE" }
+
+      # Because the path is not refreshed automatically with winget
+      # We need to start another command
+      - name: Test Command and uninstall
+        shell: pwsh
+        run: |
+          
+          # Verify command
+          # Note that the commands are in the installer.yaml file and could be retrived via yq
+          doc-exec --version
+          if ($LASTEXITCODE -ne 0) { throw "doc-exec failed with exit code $LASTEXITCODE" }
+          
+          # Test uninstallation
+          winget uninstall --name ${{ steps.props.outputs.package_name }} --accept-source-agreements
+          if ($LASTEXITCODE -ne 0) { throw "winget uninstall failed with exit code $LASTEXITCODE" }
+
+      # Checkout Winget
+      # Step 3
+      # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-3-clone-the-repository
+      - name: Checkout winget-pkgs fork
+        uses: actions/checkout@v4
+        with:
+          repository: combostrap/winget-pkgs
+          path: ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+          fetch-depth: 1
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Refresh Winget Fork
+        shell: pwsh
+        run: |
+          
+          # Go to winget-pkgs
+          cd ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+          
+          # Add the upstream
+          git remote add upstream https://github.com/microsoft/winget-pkgs.git
+          
+          # Refresh
+          git pull --quiet upstream master
+
+      # Step 4
+      # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-4-add-your-manifest-to-the-local-repository
+      - name: Step 4 - Add Manifest And Push
+        shell: pwsh
+        run: |
+          
+          cd ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+          
+          # Create the PR branch
+          set BRANCH=combostap-${{ github.ref_name }}
+          git checkout -b $BRANCH
+          
+          # Copy the new versions
+          New-Item -ItemType Directory -Path ${{ steps.props.outputs.manifest_path }} -Force | Out-Null
+          Copy-Item -Path "..\${{ env.CHECKOUT_PATH_THIS }}\${{ steps.props.outputs.manifest_path }}\*" -Destination ${{ steps.props.outputs.manifest_path }}
+          
+          # Create the commit
+          git add manifests/
+          git config --global user.email "${{ vars.BOT_EMAIL }}"
+          git config --global user.name "${{ vars.BOT_NAME }}"
+          
+          # Commit
+          git commit -a -m "Submitting ${{steps.props.outputs.publisher_name}}.${{ steps.props.outputs.product_name }} version ${{ steps.props.outputs.product_version }}"
+          
+          # Push
+          git push origin $BRANCH
+
+#      - name: Create PR
+#        shell: pwsh
+#        run: |
+#
+#          cd ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+#
+#          # Create the PR via GitHub CLI (if installed)
+#          gh pr create --repo microsoft/winget-pkgs --title "Add manifests for Publisher.AppName" --body "Adding manifests for [AppName]"

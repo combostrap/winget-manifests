@@ -1,8 +1,0 @@
-# Generated with JReleaser 1.17.0 at 2025-10-23T14:12:47.407080891Z
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.4.0.schema.json
-
-PackageIdentifier: Combostrap.doc-exec
-PackageVersion: 1.0.0
-DefaultLocale: en-US
-ManifestType: version
-ManifestVersion: 1.6.0
