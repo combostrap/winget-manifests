@@ -101,12 +101,12 @@ jobs:
           # Funy enough, the list command will ask "Do you agree to all the source agreements terms?"
           winget list --name ${{ steps.props.outputs.package_name }} --accept-source-agreements
           if ($LASTEXITCODE -ne 0) { throw "winget list --name ${{ steps.props.outputs.package_name }} failed with exit code $LASTEXITCODE" }
-
-      # Because the path is not refreshed automatically with winget
-      # We need to start another command
-      - name: Test Command and uninstall
-        shell: pwsh
-        run: |
+          
+          # Should contains the package
+          Write-Host ("User Path: "+ [System.Environment]::GetEnvironmentVariable("Path","User"))
+          
+          # Refresh PATH for current session
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           
           # Verify command
           # Note that the commands are in the installer.yaml file and could be retrived via yq
