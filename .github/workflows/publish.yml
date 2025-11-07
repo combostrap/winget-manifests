@@ -10,6 +10,10 @@ on:
     tags:
       - '*-v*'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   # The path prefix where this repository is checked out
   CHECKOUT_PATH_THIS: main
@@ -51,7 +55,7 @@ jobs:
           
             # Set Manifest Path (Path is: manifests / letter / publisher / application / version)
             $letter=$publisherName[0]
-            $manifestPath="\manifests\$letter\$publisherName\$productName\$productVersion"
+            $manifestPath="manifests\$letter\$publisherName\$productName\$productVersion"
             Add-Content -Path $env:GITHUB_OUTPUT -Value "manifest_path=$manifestPath"
           
             # Set package name
@@ -83,6 +87,13 @@ jobs:
         shell: pwsh
         run: |
           
+          # Error handling (is fucked)
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
+          function ExitOnFailure { if (-not $?) { exit $LASTEXITCODE } }
+          
           # Does not work: Error: Windows Sandbox does not seem to be available
           # It will not work because there is no sandbox available
           # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-2-test-your-manifest-with-windows-sandbox
@@ -91,16 +102,18 @@ jobs:
           
           # Enable Local Install
           winget settings --enable LocalManifestFiles
+          ExitOnFailure
           winget settings --enable LocalArchiveMalwareScanOverride
+          ExitOnFailure
           
           # Local Install
           winget install --manifest ${{ env.CHECKOUT_PATH_THIS }}\${{ steps.props.outputs.manifest_path }} --silent --accept-package-agreements --accept-source-agreements
-          if ($LASTEXITCODE -ne 0) { throw "winget install failed with exit code $LASTEXITCODE" }
+          ExitOnFailure
           
           # Verify installation
           # Funy enough, the list command will ask "Do you agree to all the source agreements terms?"
           winget list --name ${{ steps.props.outputs.package_name }} --accept-source-agreements
-          if ($LASTEXITCODE -ne 0) { throw "winget list --name ${{ steps.props.outputs.package_name }} failed with exit code $LASTEXITCODE" }
+          ExitOnFailure
           
           # Should contains the package
           Write-Host ("User Path: "+ [System.Environment]::GetEnvironmentVariable("Path","User"))
@@ -111,35 +124,38 @@ jobs:
           # Verify command
           # Note that the commands are in the installer.yaml file and could be retrived via yq
           doc-exec --version
-          if ($LASTEXITCODE -ne 0) { throw "doc-exec failed with exit code $LASTEXITCODE" }
+          ExitOnFailure
           
           # Test uninstallation
           winget uninstall --name ${{ steps.props.outputs.package_name }} --accept-source-agreements
-          if ($LASTEXITCODE -ne 0) { throw "winget uninstall failed with exit code $LASTEXITCODE" }
+          ExitOnFailure
 
       # Checkout Winget
       # Step 3
       # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-3-clone-the-repository
       - name: Checkout winget-pkgs fork
-        uses: actions/checkout@v4
-        with:
-          repository: combostrap/winget-pkgs
-          path: ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
-          fetch-depth: 1
-          token: ${{ secrets.RELEASE_TOKEN }}
-
-      - name: Refresh Winget Fork
         shell: pwsh
         run: |
-          
-          # Go to winget-pkgs
-          cd ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
-          
-          # Add the upstream
-          git remote add upstream https://github.com/microsoft/winget-pkgs.git
-          
-          # Refresh
-          git pull --quiet upstream master
+          mkdir ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+          git clone `
+            --single-branch `
+            --branch master `
+            --depth 1 `
+            https://${{ secrets.RELEASE_TOKEN }}:x-oauth-basic@github.com/combostrap/winget-pkgs.git `
+            ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+
+#      - name: Refresh Winget Fork
+#        shell: pwsh
+#        run: |
+#
+#          # Go to winget-pkgs
+#          cd ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
+#
+#          # Add the upstream
+#          git remote add upstream https://github.com/microsoft/winget-pkgs.git
+#
+#          # Refresh
+#          git pull --quiet upstream master
 
       # Step 4
       # https://learn.microsoft.com/en-us/windows/package-manager/package/repository#step-4-add-your-manifest-to-the-local-repository
@@ -147,11 +163,19 @@ jobs:
         shell: pwsh
         run: |
           
+          # Error handling (is fucked)
+          Set-StrictMode -Version Latest
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $PSDefaultParameterValues['*:ErrorAction'] = 'Stop'
+          function ExitOnFailure { if (-not $?) { exit $LASTEXITCODE } }
+          
           cd ${{ env.CHECKOUT_PATH_WINGET_PKGS }}
           
           # Create the PR branch
-          set BRANCH=combostap-${{ github.ref_name }}
+          $BRANCH="combostap-${{ github.ref_name }}"
           git checkout -b $BRANCH
+          ExitOnFailure
           
           # Copy the new versions
           New-Item -ItemType Directory -Path ${{ steps.props.outputs.manifest_path }} -Force | Out-Null
@@ -159,14 +183,20 @@ jobs:
           
           # Create the commit
           git add manifests/
+          ExitOnFailure
           git config --global user.email "${{ vars.BOT_EMAIL }}"
+          ExitOnFailure
           git config --global user.name "${{ vars.BOT_NAME }}"
+          ExitOnFailure
           
           # Commit
           git commit -a -m "Submitting ${{steps.props.outputs.publisher_name}}.${{ steps.props.outputs.product_name }} version ${{ steps.props.outputs.product_version }}"
+          ExitOnFailure
           
           # Push
           git push origin $BRANCH
+          ExitOnFailure
+          
 
 #      - name: Create PR
 #        shell: pwsh
